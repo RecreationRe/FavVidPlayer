@@ -85,12 +85,13 @@ class PlayerWindow(QtWidgets.QMainWindow):
         # pin playlist checkbox
         self.pin_checkbox = QtWidgets.QCheckBox('Pin Playlist')
         self.pin_checkbox.setChecked(False)
+        self.pin_checkbox.stateChanged.connect(self.on_pin_changed)
         h.addWidget(self.pin_checkbox)
 
         # file explorer mode checkbox
         self.explorer_checkbox = QtWidgets.QCheckBox('File Explorer Mode')
         self.explorer_checkbox.setChecked(False)
-        self.explorer_checkbox.stateChanged.connect(self.toggle_playlist_mode)
+        self.explorer_checkbox.stateChanged.connect(self.on_explorer_changed)
         h.addWidget(self.explorer_checkbox)
 
         # like/dislike/normal buttons
@@ -120,6 +121,21 @@ class PlayerWindow(QtWidgets.QMainWindow):
 
         # settings
         self.settings = QtCore.QSettings()
+
+        # load settings
+        pin = self.settings.value("pin_playlist", False, type=bool)
+        explorer = self.settings.value("file_explorer_mode", False, type=bool)
+
+        self.pin_checkbox.blockSignals(True)
+        self.pin_checkbox.setChecked(pin)
+        self.pin_checkbox.blockSignals(False)
+
+        self.explorer_checkbox.blockSignals(True)
+        self.explorer_checkbox.setChecked(explorer)
+        self.explorer_checkbox.blockSignals(False)
+
+        if explorer:
+            self.toggle_playlist_mode(QtCore.Qt.Checked)
 
         # timers
         self.edge_timer = QtCore.QTimer()
@@ -223,14 +239,12 @@ class PlayerWindow(QtWidgets.QMainWindow):
         p = self.current_root / rel
         self.play_file(p)
 
-    def toggle_playlist_mode(self, state):
-        if state == QtCore.Qt.Checked:
-            self.playlist_stack.setCurrentWidget(self.tree_list)
-            self.playlist_widget = self.tree_list
-        else:
-            self.playlist_stack.setCurrentWidget(self.flat_list)
-            self.playlist_widget = self.flat_list
-        self.refresh_playlist()
+    def on_pin_changed(self, state):
+        self.settings.setValue("pin_playlist", bool(state))
+
+    def on_explorer_changed(self, state):
+        self.settings.setValue("file_explorer_mode", bool(state))
+        self.toggle_playlist_mode(state)
 
     def play_file(self, path: Path):
         if not path.exists():
