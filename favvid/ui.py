@@ -95,6 +95,9 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.meta = None
         self.current_playing_path = None
 
+        # settings
+        self.settings = QtCore.QSettings()
+
         # timers
         self.edge_timer = QtCore.QTimer()
         self.edge_timer.timeout.connect(self.check_mouse_edge)
@@ -107,13 +110,19 @@ class PlayerWindow(QtWidgets.QMainWindow):
         # player wrapper
         self.vlc = VLCPlayer(self.video_frame)
 
+        # load last folder
+        last_folder = self.settings.value("last_folder")
+        if last_folder and Path(last_folder).exists():
+            self.open_folder(last_folder)
+
     def _wrap_widget_as_toolbar(self, widget):
         tb = QtWidgets.QToolBar()
         tb.addWidget(widget)
         return tb
 
-    def open_folder(self):
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, 'Select folder to scan')
+    def open_folder(self, folder=None):
+        if not folder:
+            folder = QtWidgets.QFileDialog.getExistingDirectory(self, 'Select folder to scan')
         if not folder:
             return
         root = Path(folder)
@@ -121,6 +130,7 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.meta = MetaStore(root)
         self.playlist = scan_videos(root)
         self.refresh_playlist()
+        self.settings.setValue("last_folder", str(root))
 
     def refresh_playlist(self):
         self.playlist_widget.clear()
