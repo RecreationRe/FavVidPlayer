@@ -17,11 +17,22 @@ class PlayerWindow(QtWidgets.QMainWindow):
 
         # right playlist dock
         self.playlist_dock = QtWidgets.QDockWidget('Playlist', self)
-        self.playlist_widget = QtWidgets.QTreeWidget()
-        self.playlist_widget.setHeaderLabel("Playlist")
-        self.playlist_widget.itemClicked.connect(self.on_item_clicked)
-        self.playlist_dock.setWidget(self.playlist_widget)
+        self.playlist_stack = QtWidgets.QStackedWidget()
+        self.flat_list = QtWidgets.QListWidget()
+        self.tree_list = QtWidgets.QTreeWidget()
+        self.tree_list.setHeaderLabel("Playlist")
+        self.playlist_stack.addWidget(self.flat_list)
+        self.playlist_stack.addWidget(self.tree_list)
+        self.playlist_dock.setWidget(self.playlist_stack)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.playlist_dock)
+
+        # default to flat
+        self.playlist_widget = self.flat_list
+        self.playlist_stack.setCurrentWidget(self.flat_list)
+
+        # connect signals
+        self.flat_list.itemClicked.connect(self.on_item_clicked)
+        self.tree_list.itemClicked.connect(self.on_item_clicked)
 
         # control bar
         control = QtWidgets.QWidget()
@@ -75,6 +86,12 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.pin_checkbox = QtWidgets.QCheckBox('Pin Playlist')
         self.pin_checkbox.setChecked(False)
         h.addWidget(self.pin_checkbox)
+
+        # file explorer mode checkbox
+        self.explorer_checkbox = QtWidgets.QCheckBox('File Explorer Mode')
+        self.explorer_checkbox.setChecked(False)
+        self.explorer_checkbox.stateChanged.connect(self.toggle_playlist_mode)
+        h.addWidget(self.explorer_checkbox)
 
         # like/dislike/normal buttons
         self.normal_btn = QtWidgets.QPushButton('Normal')
@@ -139,7 +156,20 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.settings.setValue("last_folder", str(root))
 
     def refresh_playlist(self):
-        self.build_tree(self.playlist)
+        if isinstance(self.playlist_widget, QtWidgets.QListWidget):
+            self.playlist_widget.clear()
+            for p in self.playlist:
+                item = QtWidgets.QListWidgetItem(str(p.relative_to(self.current_root)))
+                status = self.meta.get(str(p.relative_to(self.current_root))).get('status')
+                if status == 'liked':
+                    item.setBackground(QtGui.QColor('lightgreen'))
+                elif status == 'disliked':
+                    item.setBackground(QtGui.QColor('lightcoral'))
+                elif status == 'normal':
+                    item.setBackground(QtGui.QColor('lightblue'))
+                self.playlist_widget.addItem(item)
+        elif isinstance(self.playlist_widget, QtWidgets.QTreeWidget):
+            self.build_tree(self.playlist)
 
     def build_tree(self, paths):
         self.playlist_widget.clear()
@@ -180,13 +210,25 @@ class PlayerWindow(QtWidgets.QMainWindow):
         root_item = self.playlist_widget.invisibleRootItem()
         add_items(root_item, tree)
 
-    def on_item_clicked(self, item, column):
-        rel_path = item.data(0, QtCore.Qt.UserRole)
-        if rel_path:  # it's a file
-            p = self.current_root / rel_path
-            self.play_file(p)
-        else:  # it's a folder, toggle expand
-            item.setExpanded(not item.isExpanded())
+    def on_item_clicked(self, item):
+        if isinstance(item, QtWidgets.QListWidgetItem):
+            rel = item.text()
+        elif isinstance(item, QtWidgets.QTreeWidgetItem):
+            rel = item.data(0, QtCore.Qt.UserRole)
+            if not rel:  # folder
+                item.setExpanded(not item.isExpanded())
+                return
+        p = self.current_root / rel
+        self.play_file(p)
+
+    def toggle_playlist_mode(self, state):
+        if state == QtCore.Qt.Checked:
+            self.playlist_stack.setCurrentWidget(self.tree_list)
+            self.playlist_widget = self.tree_list
+        else:
+            self.playlist_stack.setCurrentWidget(self.flat_list)
+            self.playlist_widget = self.flat_list
+        self.refresh_playlist()
 
     def play_file(self, path: Path):
         if not path.exists():
@@ -256,6 +298,15 @@ class PlayerWindow(QtWidgets.QMainWindow):
             m = self.meta.get(cur)
             m['repeat'] = bool(state)
             self.meta.set(cur, m)
+
+    def toggle_playlist_mode(self, state):
+        if state == QtCore.Qt.Checked:
+            self.playlist_stack.setCurrentWidget(self.tree_list)
+            self.playlist_widget = self.tree_list
+        else:
+            self.playlist_stack.setCurrentWidget(self.flat_list)
+            self.playlist_widget = self.flat_list
+        self.refresh_playlist()
 
     def check_mouse_edge(self):
         pos = QtGui.QCursor.pos()
