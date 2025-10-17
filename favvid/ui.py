@@ -17,7 +17,8 @@ class PlayerWindow(QtWidgets.QMainWindow):
 
         # right playlist dock
         self.playlist_dock = QtWidgets.QDockWidget('Playlist', self)
-        self.playlist_widget = QtWidgets.QListWidget()
+        self.playlist_widget = QtWidgets.QTreeWidget()
+        self.playlist_widget.setHeaderLabel("Playlist")
         self.playlist_widget.itemClicked.connect(self.on_item_clicked)
         self.playlist_dock.setWidget(self.playlist_widget)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.playlist_dock)
@@ -133,22 +134,54 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.settings.setValue("last_folder", str(root))
 
     def refresh_playlist(self):
-        self.playlist_widget.clear()
-        for p in self.playlist:
-            item = QtWidgets.QListWidgetItem(str(p.relative_to(self.current_root)))
-            status = self.meta.get(str(p.relative_to(self.current_root))).get('status')
-            if status == 'liked':
-                item.setBackground(QtGui.QColor('lightgreen'))
-            elif status == 'disliked':
-                item.setBackground(QtGui.QColor('lightcoral'))
-            elif status == 'normal':
-                item.setBackground(QtGui.QColor('lightblue'))
-            self.playlist_widget.addItem(item)
+        self.build_tree(self.playlist)
 
-    def on_item_clicked(self, item):
-        rel = item.text()
-        p = self.current_root / rel
-        self.play_file(p)
+    def build_tree(self, paths):
+        self.playlist_widget.clear()
+        tree = {}
+
+        for p in sorted(paths):
+            rel = p.relative_to(self.current_root)
+            parts = rel.parts
+            current = tree
+            for part in parts[:-1]:
+                if part not in current:
+                    current[part] = {}
+                current = current[part]
+            # add file
+            if '__files__' not in current:
+                current['__files__'] = []
+            current['__files__'].append((parts[-1], str(rel)))
+
+        def add_items(parent_item, node):
+            for key, value in node.items():
+                if key == '__files__':
+                    for name, rel in value:
+                        file_item = QtWidgets.QTreeWidgetItem([name])
+                        file_item.setData(0, QtCore.Qt.UserRole, rel)
+                        parent_item.addChild(file_item)
+                        status = self.meta.get(rel).get('status')
+                        if status == 'liked':
+                            file_item.setBackground(0, QtGui.QColor('lightgreen'))
+                        elif status == 'disliked':
+                            file_item.setBackground(0, QtGui.QColor('lightcoral'))
+                        elif status == 'normal':
+                            file_item.setBackground(0, QtGui.QColor('lightblue'))
+                else:
+                    folder_item = QtWidgets.QTreeWidgetItem([key])
+                    parent_item.addChild(folder_item)
+                    add_items(folder_item, value)
+
+        root_item = self.playlist_widget.invisibleRootItem()
+        add_items(root_item, tree)
+
+    def on_item_clicked(self, item, column):
+        rel_path = item.data(0, QtCore.Qt.UserRole)
+        if rel_path:  # it's a file
+            p = self.current_root / rel_path
+            self.play_file(p)
+        else:  # it's a folder, toggle expand
+            item.setExpanded(not item.isExpanded())
 
     def play_file(self, path: Path):
         if not path.exists():
