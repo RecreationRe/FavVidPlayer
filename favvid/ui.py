@@ -96,17 +96,17 @@ class PlayerWindow(QtWidgets.QMainWindow):
         # like/dislike/normal buttons
         self.normal_btn = QtWidgets.QPushButton('Normal')
         self.normal_btn.setStyleSheet('background-color: lightblue')
-        self.normal_btn.clicked.connect(lambda: self.set_status('normal'))
+        self.normal_btn.clicked.connect(lambda: self.toggle_status('normal'))
         h.addWidget(self.normal_btn)
 
         self.like_btn = QtWidgets.QPushButton('Like')
         self.like_btn.setStyleSheet('background-color: lightgreen')
-        self.like_btn.clicked.connect(lambda: self.set_status('liked'))
+        self.like_btn.clicked.connect(lambda: self.toggle_status('liked'))
         h.addWidget(self.like_btn)
 
         self.dislike_btn = QtWidgets.QPushButton('Dislike')
         self.dislike_btn.setStyleSheet('background-color: lightcoral')
-        self.dislike_btn.clicked.connect(lambda: self.set_status('disliked'))
+        self.dislike_btn.clicked.connect(lambda: self.toggle_status('disliked'))
         h.addWidget(self.dislike_btn)
 
         control.setLayout(h)
@@ -169,7 +169,9 @@ class PlayerWindow(QtWidgets.QMainWindow):
                     item.setBackground(QtGui.QColor('lightblue'))
                 self.playlist_widget.addItem(item)
         elif isinstance(self.playlist_widget, QtWidgets.QTreeWidget):
+            expanded = self.get_expanded_paths()
             self.build_tree(self.playlist)
+            self.restore_expanded_paths(expanded)
 
     def build_tree(self, paths):
         self.playlist_widget.clear()
@@ -284,6 +286,21 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.meta.set_status(cur, status, self.current_playing_path)
         self.refresh_playlist()
 
+    def toggle_status(self, status: str):
+        cur = self.current_playing_rel()
+        if not cur:
+            QtWidgets.QMessageBox.information(self, 'No file', 'No file currently playing')
+            return
+        current = self.meta.get(cur).get('status')
+        if current == status:
+            # remove rating
+            m = self.meta.get(cur)
+            m.pop('status', None)
+            self.meta.set(cur, m)
+        else:
+            self.meta.set_status(cur, status, self.current_playing_path)
+        self.refresh_playlist()
+
     def on_speed_changed(self, val):
         self.vlc.set_rate(val)
         cur = self.current_playing_rel()
@@ -324,3 +341,28 @@ class PlayerWindow(QtWidgets.QMainWindow):
             else:
                 if not self.playlist_dock.isHidden() and local_pos.x() < w - 200:
                     self.playlist_dock.hide()
+
+    def get_expanded_paths(self):
+        expanded = []
+        def collect(item, path):
+            if item.isExpanded():
+                expanded.append(path)
+            for i in range(item.childCount()):
+                child = item.child(i)
+                collect(child, path + [child.text(0)])
+        root = self.playlist_widget.invisibleRootItem()
+        collect(root, [])
+        return expanded
+
+    def restore_expanded_paths(self, expanded):
+        def expand_item(item, path):
+            if not path:
+                return
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child.text(0) == path[0]:
+                    child.setExpanded(True)
+                    expand_item(child, path[1:])
+                    break
+        for path in expanded:
+            expand_item(self.playlist_widget.invisibleRootItem(), path)
