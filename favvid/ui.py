@@ -71,6 +71,11 @@ class PlayerWindow(QtWidgets.QMainWindow):
 
         h.addStretch()
 
+        # pin playlist checkbox
+        self.pin_checkbox = QtWidgets.QCheckBox('Pin Playlist')
+        self.pin_checkbox.setChecked(False)
+        h.addWidget(self.pin_checkbox)
+
         # like/dislike/normal buttons
         self.normal_btn = QtWidgets.QPushButton('Normal')
         self.normal_btn.setStyleSheet('background-color: lightblue')
@@ -256,9 +261,15 @@ class PlayerWindow(QtWidgets.QMainWindow):
         pos = QtGui.QCursor.pos()
         local_pos = self.mapFromGlobal(pos)
         w = self.width()
-        if local_pos.x() >= w - 40:
-            if self.playlist_dock.isHidden():
+        if self.pin_checkbox.isChecked():
+            # pinned: always show
+            if not self.playlist_dock.isVisible():
                 self.playlist_dock.show()
         else:
-            if not self.playlist_dock.isHidden() and local_pos.x() < w - 200:
-                self.playlist_dock.hide()
+            # unpinned: auto-hide
+            if local_pos.x() >= w - 40:
+                if self.playlist_dock.isHidden():
+                    self.playlist_dock.show()
+            else:
+                if not self.playlist_dock.isHidden() and local_pos.x() < w - 200:
+                    self.playlist_dock.hide()
