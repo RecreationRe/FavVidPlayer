@@ -1,254 +1,222 @@
-"""Main application window"""
+﻿"""Main application window - refactored for modularity"""
 from pathlib import Path
-from PyQt5 import QtWidgets, QtCore, QtGui
-from ..controller import ApplicationController
+from PyQt5 import QtWidgets, QtCore
+from ..controllers.application import ApplicationController
+from .toolbar import ToolbarManager
+from .dialogs import SettingsDialog, HotkeysDialog
+from .playlist import PlaylistManager
+from .shortcuts import ShortcutsManager
+from .interactions import VideoInteractionsManager
+from .handlers import SignalHandlers
 
 
 class PlayerWindow(QtWidgets.QMainWindow):
-    """Main application window"""
-    
     def __init__(self):
         super().__init__()
         self.setWindowTitle('FavVidPlayer')
         self.resize(1200, 800)
         
-        # Initialize controller
         self.controller = ApplicationController()
+        self.toolbar_mgr = ToolbarManager(self)
+        self.playlist_mgr = PlaylistManager(self)
+        self.shortcuts_mgr = ShortcutsManager(self)
+        self.interactions_mgr = VideoInteractionsManager(self)
+        self.handlers = SignalHandlers(self)
+        self.view_mode = 'flat'
+        self.last_volume = 50
         
-        # Setup UI
-        self._setup_menu_bar()
-        self._setup_central_widget()
-        self._setup_toolbar()
-        self._setup_dock_widgets()
-        self._setup_shortcuts()
-        self._setup_connections()
-        
-        # Load saved settings
+        self._setup_ui()
         self._load_settings()
     
+    def _setup_ui(self):
+        self._setup_menu_bar()
+        self._setup_central_widget()
+        self.toolbar_mgr.setup()
+        self.playlist_mgr.setup()
+        self._setup_status_bar()
+        self.shortcuts_mgr.setup_all()
+        self.interactions_mgr.setup()
+        self.handlers.setup()
+    
     def _setup_menu_bar(self):
-        """Setup menu bar"""
         menu_bar = self.menuBar()
-        
-        # File menu
         file_menu = menu_bar.addMenu('File')
-        file_menu.addAction('Open Folder', self.open_folder)
+        file_menu.addAction('Open Folder', self.open_folder, 'Ctrl+O')
+        file_menu.addSeparator()
+        file_menu.addAction('Save Settings', self._save_settings, 'Ctrl+S')
         file_menu.addSeparator()
         file_menu.addAction('Exit', self.close)
         
-        # View menu
         view_menu = menu_bar.addMenu('View')
         self.explorer_action = view_menu.addAction('File Explorer Mode')
         self.explorer_action.setCheckable(True)
+        self.explorer_action.triggered.connect(self._toggle_view_mode)
         
-        # Help menu
+        view_menu.addSeparator()
+        self.auto_hide_action = view_menu.addAction('Auto-hide Playlist')
+        self.auto_hide_action.setCheckable(True)
+        
         help_menu = menu_bar.addMenu('Help')
         help_menu.addAction('Settings', self.show_settings)
         help_menu.addAction('Hotkeys', self.show_hotkeys)
     
     def _setup_central_widget(self):
-        """Setup central video widget"""
         self.video_frame = QtWidgets.QFrame()
+        self.video_frame.setStyleSheet('background-color: black;')
         self.setCentralWidget(self.video_frame)
-        
-        # Initialize playback service
         self.controller.set_playback_service(self.video_frame)
     
-    def _setup_toolbar(self):
-        """Setup playback toolbar"""
-        self.toolbar = self.addToolBar('Playback')
-        self.addToolBar(QtCore.Qt.BottomToolBarArea, self.toolbar)
-        
-        # Playback controls
-        self.toolbar.addAction('⏮', self.previous_video)
-        self.play_action = self.toolbar.addAction('▶', self.toggle_play_pause)
-        self.toolbar.addAction('⏹', self.stop_playback)
-        self.toolbar.addAction('⏭', self.next_video)
-        
-        self.toolbar.addSeparator()
-        
-        # Time display
-        self.time_label = QtWidgets.QLabel('00:00 / 00:00')
-        self.time_label.setMinimumWidth(100)
-        self.toolbar.addWidget(self.time_label)
-        
-        # Position slider
-        self.position_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.position_slider.setMaximum(1000)
-        self.position_slider.sliderMoved.connect(self.seek_video)
-        self.toolbar.addWidget(self.position_slider)
-        
-        self.toolbar.addSeparator()
-        
-        # Volume
-        self.toolbar.addWidget(QtWidgets.QLabel('🔊'))
-        self.volume_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(50)
-        self.volume_slider.setMaximumWidth(100)
-        self.volume_slider.valueChanged.connect(self.set_volume)
-        self.toolbar.addWidget(self.volume_slider)
-        
-        self.toolbar.addSeparator()
-        
-        # Other controls
-        self.toolbar.addAction('⛶', self.toggle_fullscreen)
-        
-        self.toolbar.addSeparator()
-        
-        # Shuffle and repeat
-        self.shuffle_btn = QtWidgets.QPushButton('🔀')
-        self.shuffle_btn.setCheckable(True)
-        self.toolbar.addWidget(self.shuffle_btn)
-        
-        self.repeat_btn = QtWidgets.QPushButton('🔁')
-        self.repeat_btn.setCheckable(True)
-        self.toolbar.addWidget(self.repeat_btn)
-        
-        # Ratings
-        self.toolbar.addSeparator()
-        self.toolbar.addAction('😐', lambda: self.set_rating('normal'))
-        self.toolbar.addAction('👍', lambda: self.set_rating('liked'))
-        self.toolbar.addAction('👎', lambda: self.set_rating('disliked'))
-    
-    def _setup_dock_widgets(self):
-        """Setup dock widgets"""
-        # Playlist dock
-        self.playlist_dock = QtWidgets.QDockWidget('Playlist', self)
-        
-        playlist_container = QtWidgets.QWidget()
-        playlist_layout = QtWidgets.QVBoxLayout()
-        
-        # Search box
-        self.search_box = QtWidgets.QLineEdit()
-        self.search_box.setPlaceholderText('Search videos...')
-        self.search_box.textChanged.connect(self.search_playlist)
-        playlist_layout.addWidget(self.search_box)
-        
-        # Playlist view
-        self.playlist_view = QtWidgets.QListWidget()
-        playlist_layout.addWidget(self.playlist_view)
-        
-        playlist_container.setLayout(playlist_layout)
-        self.playlist_dock.setWidget(playlist_container)
-        
-        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.playlist_dock)
-    
-    def _setup_shortcuts(self):
-        """Setup keyboard shortcuts"""
-        QtWidgets.QShortcut(QtGui.QKeySequence('Space'), self, self.toggle_play_pause)
-        QtWidgets.QShortcut(QtGui.QKeySequence('Left'), self, self.previous_video)
-        QtWidgets.QShortcut(QtGui.QKeySequence('Right'), self, self.next_video)
-        QtWidgets.QShortcut(QtGui.QKeySequence('F11'), self, self.toggle_fullscreen)
-        QtWidgets.QShortcut(QtGui.QKeySequence('Up'), self, self.volume_up)
-        QtWidgets.QShortcut(QtGui.QKeySequence('Down'), self, self.volume_down)
-        QtWidgets.QShortcut(QtGui.QKeySequence('S'), self, self.controller.toggle_shuffle)
-    
-    def _setup_connections(self):
-        """Setup signal connections"""
-        self.controller.videos_loaded.connect(self._on_videos_loaded)
-        self.controller.video_started.connect(self._on_video_started)
+    def _setup_status_bar(self):
+        self.status_bar = self.statusBar()
+        self.status_label = QtWidgets.QLabel('Ready')
+        self.status_bar.addWidget(self.status_label)
     
     def _load_settings(self):
-        """Load saved settings"""
         settings = self.controller.settings_service
-        self.volume_slider.setValue(settings.get('volume', 50))
+        vol = settings.get('volume', 50)
+        self.toolbar_mgr.volume_slider.setValue(vol)
+        self.last_volume = vol
         
         last_folder = settings.get('last_folder')
         if last_folder and Path(last_folder).exists():
             self.controller.load_folder(last_folder)
     
-    # Slot methods
     def open_folder(self):
-        """Open folder dialog"""
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, 'Select folder')
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, 'Select Video Folder')
         if folder:
             self.controller.load_folder(Path(folder))
     
     def toggle_play_pause(self):
-        """Toggle play/pause"""
         self.controller.toggle_play_pause()
-        self.play_action.setText('⏸' if self.controller.get_is_playing() else '▶')
+        is_playing = self.controller.get_is_playing()
+        self.toolbar_mgr.update_play_icon(is_playing)
     
     def stop_playback(self):
-        """Stop playback"""
         if self.controller.playback_service:
             self.controller.playback_service.stop()
-        self.play_action.setText('▶')
+        self.toolbar_mgr.update_play_icon(False)
     
     def previous_video(self):
-        """Play previous video"""
         self.controller.play_previous()
     
     def next_video(self):
-        """Play next video"""
         self.controller.play_next()
     
     def seek_video(self, value):
-        """Seek to position"""
-        self.controller.set_video_position(value / 1000.0)
+        if self.controller.playback_service and self.controller.playback_service.current_video:
+            duration = self.controller.playback_service.get_duration()
+            if duration > 0:
+                position = (value / 1000.0) * duration
+                self.controller.set_video_position(position)
+    
+    def seek_forward(self):
+        if self.controller.playback_service:
+            interval = self.controller.settings_service.get('small_seek_interval', 5)
+            self.controller.playback_service.seek_forward(interval)
+    
+    def seek_backward(self):
+        if self.controller.playback_service:
+            interval = self.controller.settings_service.get('small_seek_interval', 5)
+            self.controller.playback_service.seek_backward(interval)
+    
+    def seek_forward_large(self):
+        if self.controller.playback_service:
+            interval = self.controller.settings_service.get('large_seek_interval', 30)
+            self.controller.playback_service.seek_forward(interval)
+    
+    def seek_backward_large(self):
+        if self.controller.playback_service:
+            interval = self.controller.settings_service.get('large_seek_interval', 30)
+            self.controller.playback_service.seek_backward(interval)
     
     def set_volume(self, value):
-        """Set volume"""
         self.controller.set_volume(value)
+        self.last_volume = value if value > 0 else self.last_volume
     
     def volume_up(self):
-        """Increase volume"""
-        new_vol = min(100, self.volume_slider.value() + 5)
-        self.volume_slider.setValue(new_vol)
+        new_vol = min(100, self.toolbar_mgr.volume_slider.value() + 5)
+        self.toolbar_mgr.volume_slider.setValue(new_vol)
     
     def volume_down(self):
-        """Decrease volume"""
-        new_vol = max(0, self.volume_slider.value() - 5)
-        self.volume_slider.setValue(new_vol)
+        new_vol = max(0, self.toolbar_mgr.volume_slider.value() - 5)
+        self.toolbar_mgr.volume_slider.setValue(new_vol)
+    
+    def toggle_mute(self):
+        current_vol = self.toolbar_mgr.volume_slider.value()
+        if current_vol > 0:
+            self.last_volume = current_vol
+            self.toolbar_mgr.volume_slider.setValue(0)
+        else:
+            self.toolbar_mgr.volume_slider.setValue(self.last_volume)
     
     def toggle_fullscreen(self):
-        """Toggle fullscreen"""
         if self.isFullScreen():
             self.showNormal()
         else:
             self.showFullScreen()
     
     def set_rating(self, status):
-        """Set video rating"""
         if self.controller.playback_service and self.controller.playback_service.current_video:
             self.controller.set_video_rating(
                 self.controller.playback_service.current_video,
                 status
             )
+            self.playlist_mgr.update_colors(self.controller.playlist.videos)
     
     def search_playlist(self, query):
-        """Search playlist"""
         results = self.controller.search_playlist(query)
-        self._update_playlist_view(results if query else self.controller.playlist.videos)
+        self.playlist_mgr.update_view(results if query else self.controller.playlist.videos)
+    
+    def _on_playlist_item_selected(self):
+        selected = self.playlist_mgr.playlist_view.selectedItems()
+        if selected:
+            video_name = selected[0].text()
+            video = next((v for v in self.controller.playlist.videos if v.name == video_name), None)
+            if video:
+                self.controller.play_video(video)
     
     def show_settings(self):
-        """Show settings dialog"""
-        # TODO: Implement settings dialog
-        pass
+        dialog = SettingsDialog(self, self.controller)
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            self.toolbar_mgr.volume_slider.setValue(dialog.volume_slider.value())
     
     def show_hotkeys(self):
-        """Show hotkeys dialog"""
-        # TODO: Implement hotkeys dialog
-        pass
+        dialog = HotkeysDialog(self)
+        dialog.exec_()
     
-    def _on_videos_loaded(self, videos):
-        """Handle videos loaded signal"""
-        self._update_playlist_view(videos)
+    def _toggle_shuffle(self):
+        self.toolbar_mgr.shuffle_btn.setChecked(not self.toolbar_mgr.shuffle_btn.isChecked())
     
-    def _on_video_started(self, video):
-        """Handle video started signal"""
-        self.setWindowTitle(f'FavVidPlayer - {video.name}')
+    def _on_shuffle_toggled(self, checked):
+        if checked:
+            self.controller.enable_shuffle()
+        else:
+            self.controller.disable_shuffle()
     
-    def _update_playlist_view(self, videos):
-        """Update playlist view"""
-        self.playlist_view.clear()
-        for video in videos:
-            self.playlist_view.addItem(video.name)
+    def _toggle_repeat(self):
+        self.controller.toggle_repeat()
+        mode = self.controller.settings_service.app_settings.repeat_mode
+        text = {'off': '🔁 Off', 'one': '🔂 Once', 'all': '🔁 All'}.get(mode, '🔁 Off')
+        self.toolbar_mgr.repeat_btn.setText(text)
     
-    def keyPressEvent(self, event):
-        """Handle key press - especially Space key"""
-        if event.key() == QtCore.Qt.Key_Space and not event.isAutoRepeat():
-            self.toggle_play_pause()
-            return
-        super().keyPressEvent(event)
+    def _toggle_auto_hide(self):
+        self.auto_hide_action.setChecked(not self.auto_hide_action.isChecked())
+        if not self.auto_hide_action.isChecked():
+            self.playlist_mgr.playlist_dock.show()
+    
+    def _toggle_view_mode(self):
+        self.explorer_action.setChecked(not self.explorer_action.isChecked())
+        view_type = 'tree' if self.explorer_action.isChecked() else 'flat'
+        self.status_label.setText(f'View mode: {view_type}')
+    
+    def _focus_search(self):
+        self.playlist_mgr.focus_search()
+    
+    def _save_settings(self):
+        self.controller.settings_service.set('volume', self.toolbar_mgr.volume_slider.value())
+        self.status_label.setText('Settings saved')
+    
+    def _on_auto_hide_timeout(self):
+        if self.auto_hide_action.isChecked():
+            self.playlist_mgr.playlist_dock.hide()
+            self.playlist_mgr.playlist_was_visible = False

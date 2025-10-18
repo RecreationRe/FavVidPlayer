@@ -23,7 +23,7 @@ class AppSettings:
     
     # Features
     auto_next_enabled: bool = True
-    repeat_enabled: bool = False
+    repeat_mode: str = 'off'  # 'off', 'one', 'all'
     shuffle_enabled: bool = False
     
     # Mute state
