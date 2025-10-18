@@ -25,6 +25,11 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.view_mode = 'flat'
         self.last_volume = 50
         
+        # Timer for updating playback position
+        self.update_timer = QtCore.QTimer()
+        self.update_timer.timeout.connect(self._update_playback_display)
+        self.update_timer.start(200)  # Update every 200ms
+        
         self._setup_ui()
         self._load_settings()
     
@@ -104,10 +109,9 @@ class PlayerWindow(QtWidgets.QMainWindow):
     
     def seek_video(self, value):
         if self.controller.playback_service and self.controller.playback_service.current_video:
-            duration = self.controller.playback_service.get_length()
-            if duration > 0:
-                position = (value / 1000.0) * duration
-                self.controller.set_video_position(position)
+            # value is 0-1000, convert to 0.0-1.0 normalized position
+            position = value / 1000.0
+            self.controller.set_video_position(position)
     
     def seek_forward(self):
         if self.controller.playback_service:
@@ -215,6 +219,30 @@ class PlayerWindow(QtWidgets.QMainWindow):
     def _save_settings(self):
         self.controller.settings_service.set('volume', self.toolbar_mgr.volume_slider.value())
         self.status_label.setText('Settings saved')
+    
+    def _update_playback_display(self):
+        """Update slider position and time label with current playback state"""
+        if not self.controller.playback_service or not self.controller.playback_service.current_video:
+            return
+        
+        current_ms = self.controller.playback_service.get_time()
+        total_ms = self.controller.playback_service.get_length()
+        
+        if total_ms <= 0:
+            return
+        
+        # Update slider without triggering sliderMoved signal
+        self.toolbar_mgr.position_slider.blockSignals(True)
+        position_normalized = (current_ms / total_ms) * 1000.0  # Slider max is 1000
+        self.toolbar_mgr.position_slider.setValue(int(position_normalized))
+        self.toolbar_mgr.position_slider.blockSignals(False)
+        
+        # Update time label
+        current_sec = current_ms // 1000
+        total_sec = total_ms // 1000
+        current_time = f'{current_sec // 60:02d}:{current_sec % 60:02d}'
+        total_time = f'{total_sec // 60:02d}:{total_sec % 60:02d}'
+        self.toolbar_mgr.time_label.setText(f'{current_time} / {total_time}')
     
     def _on_auto_hide_timeout(self):
         if self.auto_hide_action.isChecked():
