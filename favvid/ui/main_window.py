@@ -104,7 +104,7 @@ class PlayerWindow(QtWidgets.QMainWindow):
     
     def seek_video(self, value):
         if self.controller.playback_service and self.controller.playback_service.current_video:
-            duration = self.controller.playback_service.get_duration()
+            duration = self.controller.playback_service.get_length()
             if duration > 0:
                 position = (value / 1000.0) * duration
                 self.controller.set_video_position(position)
