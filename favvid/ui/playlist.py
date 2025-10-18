@@ -62,10 +62,11 @@ class PlaylistManager:
         for video in videos:
             item = QtWidgets.QListWidgetItem(video.name)
             
-            # Color based on rating
-            if video.metadata.rating == 'liked':
+            # Color based on status
+            status = video.metadata.status
+            if status == 'liked':
                 item.setBackground(QtGui.QColor('lightgreen'))
-            elif video.metadata.rating == 'disliked':
+            elif status == 'disliked':
                 item.setBackground(QtGui.QColor('lightcoral'))
             else:
                 item.setBackground(QtGui.QColor('lightblue'))
@@ -80,9 +81,10 @@ class PlaylistManager:
             video = next((v for v in videos if v.name == video_name), None)
             
             if video:
-                if video.metadata.rating == 'liked':
+                status = video.metadata.status
+                if status == 'liked':
                     item.setBackground(QtGui.QColor('lightgreen'))
-                elif video.metadata.rating == 'disliked':
+                elif status == 'disliked':
                     item.setBackground(QtGui.QColor('lightcoral'))
                 else:
                     item.setBackground(QtGui.QColor('lightblue'))
