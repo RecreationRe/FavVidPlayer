@@ -15,6 +15,16 @@ class SignalHandlers:
     
     def _on_videos_loaded(self, videos):
         """Handle videos loaded signal"""
+        # Store root path in playlist manager
+        if videos and hasattr(videos[0].path, 'parent'):
+            # Find common root from all videos
+            paths = [v.path for v in videos]
+            common_root = paths[0].parent
+            for p in paths[1:]:
+                while not str(p).startswith(str(common_root)):
+                    common_root = common_root.parent
+            self.parent.playlist_mgr.root_path = common_root
+        
         self.parent.playlist_mgr.update_view(videos)
         self.parent.status_label.setText(f'Loaded {len(videos)} videos')
     

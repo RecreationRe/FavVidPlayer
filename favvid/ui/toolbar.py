@@ -56,8 +56,9 @@ class ToolbarManager:
         
         self.toolbar.addSeparator()
         
-        # Fullscreen
+        # Fullscreen and Playlist
         self.toolbar.addAction('⛶', self.parent.toggle_fullscreen)
+        self.toolbar.addAction('📋', self.parent.toggle_playlist)
         
         self.toolbar.addSeparator()
         

@@ -24,11 +24,20 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.handlers = SignalHandlers(self)
         self.view_mode = 'flat'
         self.last_volume = 50
+        self.is_fullscreen = False
         
         # Timer for updating playback position
         self.update_timer = QtCore.QTimer()
         self.update_timer.timeout.connect(self._update_playback_display)
         self.update_timer.start(200)  # Update every 200ms
+        
+        # Fullscreen auto-hide timer
+        self.fullscreen_hide_timer = QtCore.QTimer()
+        self.fullscreen_hide_timer.timeout.connect(self._hide_fullscreen_ui)
+        
+        # Track mouse position for fullscreen
+        self.last_mouse_y = 0
+        self.setMouseTracking(True)
         
         self._setup_ui()
         self._load_settings()
@@ -172,12 +181,22 @@ class PlayerWindow(QtWidgets.QMainWindow):
         self.playlist_mgr.update_view(results if query else self.controller.playlist.videos)
     
     def _on_playlist_item_selected(self):
+        """Handle playlist item selection"""
         selected = self.playlist_mgr.playlist_view.selectedItems()
-        if selected:
-            video_name = selected[0].text()
-            video = next((v for v in self.controller.playlist.videos if v.name == video_name), None)
-            if video:
-                self.controller.play_video(video)
+        if not selected:
+            return
+        
+        if isinstance(self.playlist_mgr.playlist_view, QtWidgets.QListWidget):
+            # Flat list view - get by relative path
+            rel_path = selected[0].text()
+            video = next((v for v in self.controller.playlist.videos 
+                         if str(v.path.relative_to(self.playlist_mgr.root_path)) == rel_path), None)
+        else:
+            # Tree view - get from UserRole data
+            video = selected[0].data(0, QtCore.Qt.UserRole)
+        
+        if video:
+            self.controller.play_video(video)
     
     def show_settings(self):
         dialog = SettingsDialog(self, self.controller)
@@ -209,9 +228,56 @@ class PlayerWindow(QtWidgets.QMainWindow):
             self.playlist_mgr.playlist_dock.show()
     
     def _toggle_view_mode(self):
-        self.explorer_action.setChecked(not self.explorer_action.isChecked())
-        view_type = 'tree' if self.explorer_action.isChecked() else 'flat'
+        """Toggle between flat list and file explorer tree view"""
+        is_explorer = self.explorer_action.isChecked()
+        self.playlist_mgr.set_explorer_mode(is_explorer)
+        view_type = 'File Explorer' if is_explorer else 'Flat List'
         self.status_label.setText(f'View mode: {view_type}')
+        self.controller.settings_service.set('explorer_mode', is_explorer)
+    
+    def toggle_fullscreen(self):
+        """Toggle fullscreen with auto-hiding UI"""
+        self.is_fullscreen = not self.is_fullscreen
+        if self.is_fullscreen:
+            self.showFullScreen()
+            self.menuBar().hide()
+            self.toolbar_mgr.toolbar.hide()
+            self.playlist_mgr.playlist_dock.hide()
+            self.statusBar().hide()
+            self.fullscreen_hide_timer.start(3000)  # Auto-hide after 3 seconds of no motion
+        else:
+            self.showNormal()
+            self.menuBar().show()
+            self.toolbar_mgr.toolbar.show()
+            self.playlist_mgr.playlist_dock.show()
+            self.statusBar().show()
+            self.fullscreen_hide_timer.stop()
+    
+    def toggle_playlist(self):
+        """Toggle playlist dock visibility"""
+        self.playlist_mgr.playlist_dock.setVisible(not self.playlist_mgr.playlist_dock.isVisible())
+    
+    def _hide_fullscreen_ui(self):
+        """Hide fullscreen UI elements"""
+        if self.is_fullscreen and (self.last_mouse_y > 50 and self.last_mouse_y < self.height() - 50):
+            self.menuBar().hide()
+            self.toolbar_mgr.toolbar.hide()
+            self.statusBar().hide()
+    
+    def _show_fullscreen_ui(self):
+        """Show fullscreen UI elements"""
+        if self.is_fullscreen:
+            self.menuBar().show()
+            self.toolbar_mgr.toolbar.show()
+            self.statusBar().show()
+            self.fullscreen_hide_timer.start(3000)
+    
+    def mouseMoveEvent(self, event):
+        """Handle mouse movement in fullscreen"""
+        self.last_mouse_y = event.y()
+        if self.is_fullscreen and (event.y() < 50 or event.y() > self.height() - 50):
+            self._show_fullscreen_ui()
+        super().mouseMoveEvent(event)
     
     def _focus_search(self):
         self.playlist_mgr.focus_search()
