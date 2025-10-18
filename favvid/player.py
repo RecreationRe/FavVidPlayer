@@ -41,3 +41,11 @@ class VLCPlayer:
 
     def set_volume(self, vol: int):
         self.player.audio_set_volume(vol)
+
+    def get_time(self):
+        """Get current time in milliseconds"""
+        return self.player.get_time() or 0
+
+    def get_length(self):
+        """Get total length in milliseconds"""
+        return self.player.get_length() or 0
