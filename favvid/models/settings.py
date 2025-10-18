@@ -13,8 +13,8 @@ class AppSettings:
     persist_position: bool = True
     
     # Seek intervals
-    small_seek_seconds: float = 5.0
-    large_seek_seconds: float = 30.0
+    seek_small_seconds: float = 5.0
+    seek_large_seconds: float = 30.0
     
     # UI
     pin_playlist: bool = False
@@ -26,6 +26,10 @@ class AppSettings:
     repeat_enabled: bool = False
     shuffle_enabled: bool = False
     
+    # Mute state
+    last_volume: int = 50
+    is_muted: bool = False
+    
     def to_dict(self) -> dict:
         """Convert to dictionary"""
         return {k: v for k, v in self.__dict__.items()}
@@ -33,4 +37,7 @@ class AppSettings:
     @classmethod
     def from_dict(cls, data: dict) -> 'AppSettings':
         """Create from dictionary"""
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        # Filter to only include valid fields
+        valid_fields = cls.__dataclass_fields__.keys()
+        return cls(**{k: v for k, v in data.items() if k in valid_fields})
+

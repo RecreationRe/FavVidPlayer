@@ -23,11 +23,15 @@ class VideoMetadata:
         return data
     
     @classmethod
-    def from_dict(cls, data: dict) -> 'VideoMetadata':
+    def from_dict(cls, data: dict, path: Optional[Path] = None) -> 'VideoMetadata':
         """Create from dictionary"""
         data = data.copy()
         if 'path' in data and isinstance(data['path'], str):
             data['path'] = Path(data['path'])
+        elif path:
+            data['path'] = path
+        elif 'path' not in data:
+            data['path'] = Path("")
         return cls(**data)
     
     def is_liked(self) -> bool:
